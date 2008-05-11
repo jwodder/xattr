@@ -1,7 +1,8 @@
 /* To implement:
  - attribute removal
  - printing of attribute size?
- - switch to not follow symlinks
+ - option not to follow symlinks
+ - switch to only list certain attributes?
 */
 
 #include <stdio.h>
@@ -18,7 +19,7 @@ void usage(_Bool verbose);
 
 int main(int argc, char** argv) {
  int ch;
- while ((ch = getopt(argc, argv, "lsvh")) != -1) {
+ while ((ch = getopt(argc, argv, "lsvhx")) != -1) {
   switch (ch) {
    case 'l': flags.mode = list; break;
    case 's': flags.mode = set; break;
@@ -82,13 +83,53 @@ int main(int argc, char** argv) {
    }
    free(attrList);
   }
+ } else if (flags.mode == set) {
+  if ((argc - optind) % 2 == 0) {
+   fprintf(stderr, "xattr: invalid number of options for -s switch\n\n");
+   usage(0); return 2;
+  }
+  char* file = argv[argc-1];
+  for (int i=optind; i<argc; i+=2) {
+   if (flags.x) {
+    char* value = malloc(strlen(argv[i+1])/2 + 1);
+    checkMem(value);
+    int hexOff=0, byteOff=0, scanRet, bytesRead;
+    while ((scanRet = sscanf(argv[i+1] + hexOff, " %2hhx%n", value+byteOff,
+     &bytesRead)) != EOF) {
+     if (scanRet == 0) {
+      if (flags.v) fprintf(stderr, "xattr: warning: parsing of `%s' value "
+       "terminated at character %d: not hexadecimal pair\n", argv[i], hexOff);
+      break;
+     }
+     hexOff += bytesRead;
+     byteOff++;
+    }
+    if (setxattr(file, argv[i], value, byteOff, 0, 0) == -1) {
+     fprintf(stderr, "xattr: %s: %s: ", file, argv[i]); perror(NULL);
+    } else if (flags.v)
+     printf("xattr: Attribute `%s' set on %s\n", argv[i], file);
+    free(value);
+   } else {
+    if (setxattr(file, argv[i], argv[i+1], strlen(argv[i+1]), 0, 0) == -1) {
+     fprintf(stderr, "xattr: %s: %s: ", file, argv[i]); perror(NULL);
+    } else if (flags.v)
+     printf("xattr: Attribute `%s' set on %s\n", argv[i], file);
+   }
+  }
  }
-
-
-
-
-
+ return 0;
+}
 
 void usage(_Bool verbose) {
-
+ fprintf(stderr, "Usage: xattr -l [-vx] file ...\n"
+  "       xattr -s [-vx] name value [name value ...] file\n"
+  "       xattr -h\n");
+ if (verbose)
+  fprintf(stderr,
+   "  -h - display this help message & exit\n"
+   "  -l - list extended attribute names (default)\n"
+   "  -s - set extended attribute values\n"
+   "  -v - verbose: list attribute values (-l); print message on success (-s)\n"
+   "  -x - output/read attribute values as hexadecimal\n"
+  );
 }
