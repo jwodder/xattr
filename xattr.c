@@ -1,8 +1,10 @@
-/* To implement:
- - attribute removal
- - printing of attribute size?
- - option not to follow symlinks
- - switch to only list certain attributes?
+/* To do:
+ - Implement:
+  - printing of attribute size?
+  - option not to follow symlinks
+  - switch to only list certain attributes?
+ - Take care of single hex digits in hex attribute values
+ - Modify the return value if a non-fatal error occurred during execution?
 */
 
 #include <stdio.h>
@@ -13,19 +15,20 @@
 
 #define checkMem(p)  if (!p) {perror("xattr"); exit(1); }
 
-struct {_Bool v, x : 1; enum {list=0, set} mode; } flags;
+struct {_Bool v, x : 1; enum {list=0, set, rm} mode; } flags;
 
 void usage(_Bool verbose);
 
 int main(int argc, char** argv) {
  int ch;
- while ((ch = getopt(argc, argv, "lsvhx")) != -1) {
+ while ((ch = getopt(argc, argv, "lsvhxr")) != -1) {
   switch (ch) {
    case 'l': flags.mode = list; break;
    case 's': flags.mode = set; break;
    case 'v': flags.v = 1; break;
    case 'h': usage(1); return 0;
-   case 'x': flags.x = 1; break;  /* hex output */
+   case 'x': flags.x = 1; break;
+   case 'r': flags.mode = rm; break;
    default: usage(0); return 2;
   }
  }
@@ -89,7 +92,7 @@ int main(int argc, char** argv) {
    usage(0); return 2;
   }
   char* file = argv[argc-1];
-  for (int i=optind; i<argc; i+=2) {
+  for (int i=optind; i<argc-1; i+=2) {
    if (flags.x) {
     char* value = malloc(strlen(argv[i+1])/2 + 1);
     checkMem(value);
@@ -116,6 +119,15 @@ int main(int argc, char** argv) {
      printf("xattr: Attribute `%s' set on %s\n", argv[i], file);
    }
   }
+ } else if (flags.mode == rm) {
+  char* file = argv[argc-1];
+  for (int i=optind; i<argc-1; i++) {
+   if (removexattr(file, argv[i], 0) == -1) {
+    fprintf(stderr, "xattr: %s: %s: ", file, argv[1]); perror(NULL);
+   } else if (flags.v) {
+    printf("xattr: attribute `%s' removed from %s\n", argv[i], file);
+   }
+  }
  }
  return 0;
 }
@@ -123,13 +135,16 @@ int main(int argc, char** argv) {
 void usage(_Bool verbose) {
  fprintf(stderr, "Usage: xattr -l [-vx] file ...\n"
   "       xattr -s [-vx] name value [name value ...] file\n"
+  "       xattr -r [-v] name [name ...] file\n"
   "       xattr -h\n");
  if (verbose)
-  fprintf(stderr,
+  fprintf(stderr, "Options:\n"
    "  -h - display this help message & exit\n"
    "  -l - list extended attribute names (default)\n"
+   "  -r - remove extended attributes\n"
    "  -s - set extended attribute values\n"
-   "  -v - verbose: list attribute values (-l); print message on success (-s)\n"
+   "  -v - verbose output\n"
    "  -x - output/read attribute values as hexadecimal\n"
   );
+ else fprintf(stderr, "Run `xattr -h' for a command-line options summary.\n");
 }
