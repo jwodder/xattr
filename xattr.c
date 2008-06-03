@@ -1,7 +1,8 @@
+/* $Id$ */
+
 /* To do:
  - Implement:
   - printing of attribute size?
-  - option not to follow symlinks
   - switch to only list certain attributes?
  - Take care of single hex digits in hex attribute values
  - Modify the return value if a non-fatal error occurred during execution?
@@ -15,13 +16,13 @@
 
 #define checkMem(p)  if (!p) {perror("xattr"); exit(1); }
 
-struct {_Bool v, x : 1; enum {list=0, set, rm} mode; } flags;
+struct {_Bool v, x : 1; enum {list=0, set, rm} mode; int slink; } flags;
 
 void usage(_Bool verbose);
 
 int main(int argc, char** argv) {
  int ch;
- while ((ch = getopt(argc, argv, "lsvhxr")) != -1) {
+ while ((ch = getopt(argc, argv, "lsvhxrPL")) != -1) {
   switch (ch) {
    case 'l': flags.mode = list; break;
    case 's': flags.mode = set; break;
@@ -29,20 +30,22 @@ int main(int argc, char** argv) {
    case 'h': usage(1); return 0;
    case 'x': flags.x = 1; break;
    case 'r': flags.mode = rm; break;
+   case 'L': flags.slink = 0; break;  /* Follow (all) symbolic links */
+   case 'P': flags.slink = XATTR_NOFOLLOW; break;  /* Follow no symlinks */
    default: usage(0); return 2;
   }
  }
  if (optind == argc) {usage(0); return 2; }
  else if (flags.mode == list) {
   for (int i=optind; i<argc; i++) {
-   int attrLen = listxattr(argv[i], NULL, 0, 0);
+   int attrLen = listxattr(argv[i], NULL, 0, flags.slink);
    if (attrLen == 0) continue;  /* Print message? */
    else if (attrLen == -1) {
     fprintf(stderr, "xattr: %s: ", argv[i]); perror(NULL); continue;
    }
    char* attrList = malloc(attrLen);
    checkMem(attrList);
-   attrLen = listxattr(argv[i], attrList, attrLen, 0);
+   attrLen = listxattr(argv[i], attrList, attrLen, flags.slink);
    if (attrLen == 0) {free(attrList); continue; }
    else if (attrLen == -1) {
     /* Check for errno == ERANGE? */
@@ -56,15 +59,15 @@ int main(int argc, char** argv) {
    while (attrLen > 0) {
     printf(" %s", currAttr);
     if (flags.v) {
-     printf(": ");
-     int valLen = getxattr(argv[i], currAttr, NULL, 0, 0, 0);
+     printf(" : ");
+     int valLen = getxattr(argv[i], currAttr, NULL, 0, 0, flags.slink);
      if (valLen == -1) {
       fprintf(stderr, "\nxattr: %s: %s: ", argv[i], currAttr); perror(NULL);
       continue;
      }
      char* value = malloc(valLen);
      checkMem(value);
-     valLen = getxattr(argv[i], currAttr, value, valLen, 0, 0);
+     valLen = getxattr(argv[i], currAttr, value, valLen, 0, flags.slink);
      if (valLen == -1) {
       /* Check for errno == ERANGE? */
       free(value);
@@ -107,13 +110,13 @@ int main(int argc, char** argv) {
      hexOff += bytesRead;
      byteOff++;
     }
-    if (setxattr(file, argv[i], value, byteOff, 0, 0) == -1) {
+    if (setxattr(file, argv[i], value, byteOff, 0, flags.slink) == -1) {
      fprintf(stderr, "xattr: %s: %s: ", file, argv[i]); perror(NULL);
     } else if (flags.v)
      printf("xattr: Attribute `%s' set on %s\n", argv[i], file);
     free(value);
    } else {
-    if (setxattr(file, argv[i], argv[i+1], strlen(argv[i+1]), 0, 0) == -1) {
+    if (setxattr(file, argv[i], argv[i+1], strlen(argv[i+1]), 0, flags.slink) == -1) {
      fprintf(stderr, "xattr: %s: %s: ", file, argv[i]); perror(NULL);
     } else if (flags.v)
      printf("xattr: Attribute `%s' set on %s\n", argv[i], file);
@@ -122,7 +125,7 @@ int main(int argc, char** argv) {
  } else if (flags.mode == rm) {
   char* file = argv[argc-1];
   for (int i=optind; i<argc-1; i++) {
-   if (removexattr(file, argv[i], 0) == -1) {
+   if (removexattr(file, argv[i], flags.slink) == -1) {
     fprintf(stderr, "xattr: %s: %s: ", file, argv[1]); perror(NULL);
    } else if (flags.v) {
     printf("xattr: attribute `%s' removed from %s\n", argv[i], file);
@@ -133,14 +136,16 @@ int main(int argc, char** argv) {
 }
 
 void usage(_Bool verbose) {
- fprintf(stderr, "Usage: xattr -l [-vx] file ...\n"
-  "       xattr -s [-vx] name value [name value ...] file\n"
-  "       xattr -r [-v] name [name ...] file\n"
+ fprintf(stderr, "Usage: xattr [-l] [-LPvx] file ...\n"
+  "       xattr -s [-LPvx] name value [name value ...] file\n"
+  "       xattr -r [-LPv] name [name ...] file\n"
   "       xattr -h\n");
  if (verbose)
   fprintf(stderr, "Options:\n"
    "  -h - display this help message & exit\n"
+   "  -L - follow symbolic links\n"
    "  -l - list extended attribute names (default)\n"
+   "  -P - do not follow symbolic links (default)\n"
    "  -r - remove extended attributes\n"
    "  -s - set extended attribute values\n"
    "  -v - verbose output\n"
