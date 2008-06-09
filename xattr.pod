@@ -1,0 +1,110 @@
+=pod
+
+=head1 NAME
+
+B<xattr> - manipulate Mac OS X extended attributes on files
+
+=head1 SYNOPSIS
+
+B<xattr> [B<-lr>] [B<-LPvx>] I<pattern> [I<pattern> ...] I<file>
+
+B<xattr> [B<-lr>] B<-A> [B<-LPvx>] I<file> [I<file> ...]
+
+B<xattr> B<-s> [B<-LPvx>] I<name=value> [I<name=value> ...] I<file>
+
+B<xattr> B<-h>
+
+=head1 DESCRIPTION
+
+B<xattr> is used to list, set, or remove extended attributes on files under
+recent versions of Mac OS X.  Extended attributes provide extra information
+about file system objects (files, directories, symlinks, etc.) and are used by
+various Mac OS X applications to store data about files beyond just what they
+contain.  Care should therefore be taken when changing them so as not to
+needlessly disrupt any pre-existing settings.
+
+In the above synopses, I<pattern> is a shell wildcard pattern (using C<*>,
+C<?>, etc.) that is used to match attribute names, and any wildcards used will
+have to be escaped so as not to be parsed by the shell.  Only pattern elements
+supported by L<fnmatch(3)> are supported by B<xattr>.
+
+=head1 OPTIONS
+
+=over
+
+=item B<-A>
+
+List or remove all attributes.  When this option is given, all command-line
+arguments are taken to be filenames to act upon rather than patterns.  This
+option has no effect if the B<-s> option is also supplied.
+
+=item B<-h>
+
+Display a usage & options summary and exit.
+
+=item B<-i>
+
+Match patterns case-insensitively.
+
+=item B<-L>
+
+Follow all symbolic links.  This causes B<xattr> to act on the file that a
+symbolic link points to, rather than on the link itself.
+
+=item B<-l>
+
+List the names of the extended attributes on a file.  This is the default.
+When the B<-v> option is also given, the value of each attribute is also
+printed.
+
+=item B<-P>
+
+Do not follow any symbolic links.  This is the default.
+
+=item B<-r>
+
+Remove extended attributes from a file.  When the B<-v> option is also given, a
+message is printed to the standard output for each attribute removed.  When the
+B<-A> option is also given, all extended attributes are removed from each file
+specified on the command line.
+
+=item B<-s>
+
+Set the values of extended attributes.  The last argument is taken to be the
+name of a file, and every other argument is taken to be of the form
+C<name=value>, in which equals signs within the C<name> may be escaped with
+backslashes, and any other character preceded by a backslash is replaced with
+itself.  Note that backslashes in the C<value> portion of the string are not
+parsed.  If the B<-v> option is also given, a message is printed to the
+standard output for each extended attribute set on the file.
+
+=item B<-v>
+
+Give verbose output.  When listing extended attributes, the values are printde
+as well.  When setting or removing attributes, a message is printed for each
+attribute set or removed.  When setting attributes to hexadecimal values with
+the B<-x> option, print a warning when a non-hexadecimal digit causes parsing
+of a value to stop.
+
+=item B<-x>
+
+Print out attribute values in hexadecimal.  When setting attributes, treat
+attribute values as sequences of hexadecimal digits (which may not contain
+C<0x>).
+
+=back
+
+=head1 BUGS
+
+Odd numbers of hexadecimal digits, whether terminated by a non-hex digit or by
+the end of the argument, are not handled very well when setting attributes.
+
+=head1 SEE ALSO
+
+L<ls(1)>, L<fnmatch(3)>, L<getxattr(3)>, L<listxattr(3)>, L<removexattr(3)>
+
+=head1 AUTHOR
+
+John T. Wodder II <jwodder@sdf.lonestar.org>
+
+=cut

@@ -176,15 +176,13 @@ int main(int argc, char** argv) {
 }
 
 void usage(_Bool verbose) {
- fprintf(stderr, "Usage: xattr [-l] [-LPvx] pattern [pattern ...] file\n"
-  "       xattr [-l] -A [-LPvx] file [file ...]\n"
+ fprintf(stderr, "Usage: xattr [-lr] [-LPvx] pattern [pattern ...] file\n"
+  "       xattr [-lr] -A [-LPvx] file [file ...]\n"
   "       xattr -s [-LPvx] name=value [name=value ...] file\n"
-  "       xattr -r [-LPv] pattern [pattern ...] file\n"
-  "       xattr -r -A [-LPv] file [file ...]\n"
   "       xattr -h\n"
   "`pattern' is a shell wildcard pattern.\n");
  if (verbose)
-  fprintf(stderr, "Options:\n"
+  fprintf(stderr, "\nOptions:\n"
    "  -A - list or remove all attributes\n"
    "  -h - display this help message & exit\n"
    "  -i - perform case-insensitive pattern matching\n"
