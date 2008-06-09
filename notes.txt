@@ -4,13 +4,4 @@ TO DO
  - switch to only list certain attributes?
 - Take care of single hex digits in hex attribute values
 - Modify the return value if a non-fatal error occurred during execution?
-- Desired command-line syntax:
- - For listing or removing certain attributes:
- $ xattr [switches] pattern [pattern ...] filename
-   ...where 'pattern' is a shell wildcard pattern to be matched against the
-   attribute names with fnmatch()
- - For listing or removing all attributes:
- $ xattr [switches] -A filename [filename ...]
- - For setting attributes:
- $ xattr [switches] name=value [name=value ...] filename
-  ...where '='s within names are escaped with backslashes
+- Write a manpage

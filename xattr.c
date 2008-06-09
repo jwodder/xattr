@@ -4,17 +4,20 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <fnmatch.h>
 #include <sys/xattr.h>
 
 #define checkMem(p)  if (!p) {perror("xattr"); exit(1); }
 
-struct {_Bool v, x : 1; enum {list=0, set, rm} mode; int slink; } flags;
+struct {_Bool v, x, A, i : 1; enum {list=0, set, rm} mode; int slink; } flags;
 
 void usage(_Bool verbose);
+char** getAttrs(char* path);
+char* getValue(char* path, char* attr, int* valLen);
 
 int main(int argc, char** argv) {
  int ch;
- while ((ch = getopt(argc, argv, "lsvhxrPL")) != -1) {
+ while ((ch = getopt(argc, argv, "lsvhxrPLAi")) != -1) {
   switch (ch) {
    case 'l': flags.mode = list; break;
    case 's': flags.mode = set; break;
@@ -24,75 +27,87 @@ int main(int argc, char** argv) {
    case 'r': flags.mode = rm; break;
    case 'L': flags.slink = 0; break;  /* Follow (all) symbolic links */
    case 'P': flags.slink = XATTR_NOFOLLOW; break;  /* Follow no symlinks */
+   case 'A': flags.A = 1; break;
+   case 'i': flags.i = 1; break;  /* Do case-insensitive pattern matching */
    default: usage(0); return 2;
   }
  }
  if (optind == argc) {usage(0); return 2; }
- else if (flags.mode == list) {
-  for (int i=optind; i<argc; i++) {
-   int attrLen = listxattr(argv[i], NULL, 0, flags.slink);
-   if (attrLen == 0) continue;  /* Print message? */
-   else if (attrLen == -1) {
-    fprintf(stderr, "xattr: %s: ", argv[i]); perror(NULL); continue;
-   }
-   char* attrList = malloc(attrLen);
-   checkMem(attrList);
-   attrLen = listxattr(argv[i], attrList, attrLen, flags.slink);
-   if (attrLen == 0) {free(attrList); continue; }
-   else if (attrLen == -1) {
-    /* Check for errno == ERANGE? */
-    free(attrList);
-    fprintf(stderr, "xattr: %s: ", argv[i]);
-    perror(NULL);
-    continue;
-   }
-   printf("%s:\n", argv[i]);
-   char* currAttr = attrList;
-   while (attrLen > 0) {
-    printf(" %s", currAttr);
-    if (flags.v) {
-     printf(" : ");
-     int valLen = getxattr(argv[i], currAttr, NULL, 0, 0, flags.slink);
-     if (valLen == -1) {
-      fprintf(stderr, "\nxattr: %s: %s: ", argv[i], currAttr); perror(NULL);
-      continue;
-     }
-     char* value = malloc(valLen);
-     checkMem(value);
-     valLen = getxattr(argv[i], currAttr, value, valLen, 0, flags.slink);
-     if (valLen == -1) {
-      /* Check for errno == ERANGE? */
+ if (flags.mode == set && flags.A) fprintf(stderr, "xattr: warning: -A switch"
+  " has no effect when setting attributes\n");
+
+ if (flags.mode == list) {
+  if (flags.A) {
+   for (int i=optind; i<argc; i++) {
+    char** attrs = getAttrs(argv[i]);
+    if (attrs == NULL) continue;  /* Print message? */
+    printf("%s:\n", argv[i]);
+    for (int j=0; attrs[j] != NULL; j++) {
+     printf(" %s", attrs[j]);
+     if (flags.v) {
+      printf(" : ");
+      int valLen;
+      char* value = getValue(argv[i], attrs[j], &valLen);
+      if (value == NULL) continue;
+      if (flags.x) {
+       for (int j=0; j<valLen; j++) {
+	if (j>0) putchar(' '); printf("%02X", (unsigned char) value[j]);
+       }
+      } else {fwrite(value, 1, valLen, stdout); }
       free(value);
-      fprintf(stderr, "\nxattr: %s: %s: ", argv[i], currAttr); perror(NULL);
-      continue;
      }
-     if (flags.x) {
-      for (int j=0; j<valLen; j++) {
-       if (j>0) putchar(' '); printf("%02X", (unsigned char) value[j]);
-      }
-     } else {fwrite(value, 1, valLen, stdout); }
-     free(value);
+     putchar('\n');
     }
-    putchar('\n');
-    char* nextAttr = strchr(currAttr, '\0');
-    if (nextAttr == NULL) break;
-    attrLen -= ++nextAttr - currAttr;
-    currAttr = nextAttr;
+    if (attrs[0]) free(attrs[0]);
+    free(attrs);
    }
-   free(attrList);
+  } else {
+   if (optind == argc-1) {usage(0); return 2; }
+   char** attrs = getAttrs(argv[argc-1]);
+   if (attrs == NULL) return 0;
+   for (int i=optind; i<argc-1; i++) {
+    for (int j=0; attrs[j] != NULL; j++) {
+     if (fnmatch(argv[i], attrs[j], FNM_PERIOD | (flags.i ? FNM_CASEFOLD : 0)) == 0) {
+      printf("%s", attrs[j]);
+      if (flags.v) {
+       printf(" : ");
+       int valLen;
+       char* value = getValue(argv[argc-1], attrs[j], &valLen);
+       if (value == NULL) continue;
+       if (flags.x) {
+	for (int j=0; j<valLen; j++) {
+	 if (j>0) putchar(' '); printf("%02X", (unsigned char) value[j]);
+	}
+       } else {fwrite(value, 1, valLen, stdout); }
+       free(value);
+      }
+      putchar('\n');
+     }
+    }
+   }
+   if (attrs[0]) free(attrs[0]);
+   free(attrs);
   }
  } else if (flags.mode == set) {
-  if ((argc - optind) % 2 == 0) {
-   fprintf(stderr, "xattr: invalid number of options for -s switch\n\n");
-   usage(0); return 2;
-  }
-  char* file = argv[argc-1];
-  for (int i=optind; i<argc-1; i+=2) {
+  if (optind == argc-1) {usage(0); return 2; }
+  for (int i=optind; i<argc-1; i++) {
+   char* eqSign = strchr(argv[i], '=');
+   /* Although an error occurs when setxattr() is passed an empty name, don't
+    * try to stop the user from putting an equals sign at the beginning of an
+    * argument. */
+   if (eqSign == NULL) {
+    fprintf(stderr, "xattr: %s: invalid argument\n", argv[i]); continue;
+   }
+
+   /* Insert parsing of backslashes in the attribute name here */
+
+   *eqSign = '\0';
+   char* newVal = eqSign + 1;
    if (flags.x) {
-    char* value = malloc(strlen(argv[i+1])/2 + 1);
+    char* value = malloc(strlen(newVal)/2 + 1);
     checkMem(value);
     int hexOff=0, byteOff=0, scanRet, bytesRead;
-    while ((scanRet = sscanf(argv[i+1] + hexOff, " %2hhx%n", value+byteOff,
+    while ((scanRet = sscanf(newVal + hexOff, " %2hhx%n", value+byteOff,
      &bytesRead)) != EOF) {
      if (scanRet == 0) {
       if (flags.v) fprintf(stderr, "xattr: warning: parsing of `%s' value "
@@ -102,39 +117,70 @@ int main(int argc, char** argv) {
      hexOff += bytesRead;
      byteOff++;
     }
-    if (setxattr(file, argv[i], value, byteOff, 0, flags.slink) == -1) {
-     fprintf(stderr, "xattr: %s: %s: ", file, argv[i]); perror(NULL);
+    if (setxattr(argv[argc-1], argv[i], value, byteOff, 0, flags.slink) < 0) {
+     fprintf(stderr, "xattr: %s: %s: ", argv[argc-1], argv[i]); perror(NULL);
     } else if (flags.v)
-     printf("xattr: Attribute `%s' set on %s\n", argv[i], file);
+     printf("xattr: attribute `%s' set on %s\n", argv[i], argv[argc-1]);
     free(value);
    } else {
-    if (setxattr(file, argv[i], argv[i+1], strlen(argv[i+1]), 0, flags.slink) == -1) {
-     fprintf(stderr, "xattr: %s: %s: ", file, argv[i]); perror(NULL);
+    if (setxattr(argv[argc-1], argv[i], newVal, strlen(newVal), 0, flags.slink)
+     == -1) {
+     fprintf(stderr, "xattr: %s: %s: ", argv[argc-1], argv[i]); perror(NULL);
     } else if (flags.v)
-     printf("xattr: Attribute `%s' set on %s\n", argv[i], file);
+     printf("xattr: attribute `%s' set on %s\n", argv[i], argv[argc-1]);
    }
   }
  } else if (flags.mode == rm) {
-  char* file = argv[argc-1];
-  for (int i=optind; i<argc-1; i++) {
-   if (removexattr(file, argv[i], flags.slink) == -1) {
-    fprintf(stderr, "xattr: %s: %s: ", file, argv[1]); perror(NULL);
-   } else if (flags.v) {
-    printf("xattr: attribute `%s' removed from %s\n", argv[i], file);
+  if (flags.A) {
+   for (int i=optind; i<argc; i++) {
+    char** attrs = getAttrs(argv[i]);
+    if (attrs == NULL) continue;
+    for (int j=0; attrs[j] != NULL; j++) {
+     if (removexattr(argv[i], attrs[j], flags.slink) == -1) {
+      fprintf(stderr, "xattr: %s: %s: ", argv[i], attrs[j]); perror(NULL);
+     } else if (flags.v) {
+      printf("xattr: attribute `%s' removed from %s\n", attrs[j], argv[i]);
+     }
+    }
+    if (attrs[0]) free(attrs[0]);
+    free(attrs);
    }
+  } else {
+   char* file = argv[argc-1];
+   if (optind == argc-1) {usage(0); return 2; }
+   char** attrs = getAttrs(file);
+   if (attrs == NULL) return 0;
+   for (int i=optind; i<argc-1; i++) {
+    for (int j=0; attrs[j] != NULL; j++) {
+     if (fnmatch(argv[i], attrs[j], FNM_PERIOD | (flags.i ? FNM_CASEFOLD : 0)) == 0) {
+      if (removexattr(file, attrs[j], flags.slink) == -1) {
+       fprintf(stderr, "xattr: %s: %s: ", file, attrs[j]); perror(NULL);
+      } else if (flags.v) {
+       printf("xattr: attribute `%s' removed from %s\n", attrs[j], file);
+      }
+     }
+    }
+   }
+   if (attrs[0]) free(attrs[0]);
+   free(attrs);
   }
  }
  return 0;
 }
 
 void usage(_Bool verbose) {
- fprintf(stderr, "Usage: xattr [-l] [-LPvx] file ...\n"
-  "       xattr -s [-LPvx] name value [name value ...] file\n"
-  "       xattr -r [-LPv] name [name ...] file\n"
-  "       xattr -h\n");
+ fprintf(stderr, "Usage: xattr [-l] [-LPvx] pattern [pattern ...] file\n"
+  "       xattr [-l] -A [-LPvx] file [file ...]\n"
+  "       xattr -s [-LPvx] name=value [name=value ...] file\n"
+  "       xattr -r [-LPv] pattern [pattern ...] file\n"
+  "       xattr -r -A [-LPv] file [file ...]\n"
+  "       xattr -h\n"
+  "`pattern' is a shell wildcard pattern.\n");
  if (verbose)
   fprintf(stderr, "Options:\n"
+   "  -A - list or remove all attributes\n"
    "  -h - display this help message & exit\n"
+   "  -i - perform case-insensitive pattern matching\n"
    "  -L - follow symbolic links\n"
    "  -l - list extended attribute names (default)\n"
    "  -P - do not follow symbolic links (default)\n"
@@ -144,4 +190,60 @@ void usage(_Bool verbose) {
    "  -x - output/read attribute values as hexadecimal\n"
   );
  else fprintf(stderr, "Run `xattr -h' for a command-line options summary.\n");
+}
+
+char** getAttrs(char* path) {
+ if (!path) return NULL;  /* Just in case */
+ int attrLen = listxattr(path, NULL, 0, flags.slink);
+ if (attrLen == 0) return NULL;
+ else if (attrLen == -1) {
+  fprintf(stderr, "xattr: %s: ", path); perror(NULL); return NULL;
+ }
+ char* attrList = malloc(attrLen);
+ checkMem(attrList);
+ attrLen = listxattr(path, attrList, attrLen, flags.slink);
+ if (attrLen == 0) {free(attrList); return NULL; }
+ else if (attrLen == -1) {
+  /* Check for errno == ERANGE? */
+  free(attrList);
+  fprintf(stderr, "xattr: %s: ", path); perror(NULL);
+  return NULL;
+ }
+ char* currAttr = attrList;
+ int currLen = attrLen, attrQty = 0;
+ while (currLen > 0) {
+  attrQty++;
+  char* nextAttr = strchr(currAttr, '\0');
+  if (nextAttr == NULL) break;
+  currLen -= ++nextAttr - currAttr;
+  currAttr = nextAttr;
+ }
+ char** attrs = calloc(attrQty+1, sizeof(char*));
+ checkMem(attrs);
+ currAttr = attrList;
+ for (int i=0; i<attrQty; i++) {
+  attrs[i] = currAttr;
+  char* nextAttr = strchr(currAttr, '\0');
+  if (nextAttr == NULL) break;
+  currAttr = nextAttr;
+ }
+ attrs[attrQty] = NULL;  /* Just to be sure */
+ return attrs;
+}
+
+char* getValue(char* path, char* attr, int* valLen) {
+ *valLen = getxattr(path, attr, NULL, 0, 0, flags.slink);
+ if (*valLen == -1) {
+  fprintf(stderr, "\nxattr: %s: %s: ", path, attr); perror(NULL); return NULL;
+ }
+ char* value = malloc(*valLen);
+ checkMem(value);
+ *valLen = getxattr(path, attr, value, *valLen, 0, flags.slink);
+ if (*valLen == -1) {
+  /* Check for errno == ERANGE? */
+  free(value);
+  fprintf(stderr, "\nxattr: %s: %s: ", path, attr); perror(NULL);
+  return NULL;
+ }
+ return value;
 }
