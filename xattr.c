@@ -33,9 +33,6 @@ int main(int argc, char** argv) {
   }
  }
  if (optind == argc) {usage(0); return 2; }
- if (flags.mode == set && flags.A) fprintf(stderr, "xattr: warning: -A switch"
-  " has no effect when setting attributes\n");
-
  if (flags.mode == list) {
   if (flags.A) {
    for (int i=optind; i<argc; i++) {
@@ -60,6 +57,7 @@ int main(int argc, char** argv) {
     }
     if (attrs[0]) free(attrs[0]);
     free(attrs);
+    putchar('\n');
    }
   } else {
    if (optind == argc-1) {usage(0); return 2; }
@@ -91,18 +89,26 @@ int main(int argc, char** argv) {
  } else if (flags.mode == set) {
   if (optind == argc-1) {usage(0); return 2; }
   for (int i=optind; i<argc-1; i++) {
-   char* eqSign = strchr(argv[i], '=');
+   char* pair = strdup(argv[i]);
+   /* Parse backslashes while looking for the equals sign */
    /* Although an error occurs when setxattr() is passed an empty name, don't
     * try to stop the user from putting an equals sign at the beginning of an
     * argument. */
-   if (eqSign == NULL) {
+   int escOffset = 0;
+   char* newVal = NULL;
+   for (int j=0; pair[j] != '\0'; j++) {
+    if (pair[j] == '\\') {j++; escOffset++; }
+    else if (pair[j] == '=') {
+     pair[j-escOffset] = '\0';
+     newVal = pair + j + 1;
+     break;
+    }
+    if (escOffset > 0) pair[j-escOffset] = pair[j];
+   }
+   if (newVal == NULL) {
+    free(pair);
     fprintf(stderr, "xattr: %s: invalid argument\n", argv[i]); continue;
    }
-
-   /* Insert parsing of backslashes in the attribute name here */
-
-   *eqSign = '\0';
-   char* newVal = eqSign + 1;
    if (flags.x) {
     char* value = malloc(strlen(newVal)/2 + 1);
     checkMem(value);
@@ -117,18 +123,19 @@ int main(int argc, char** argv) {
      hexOff += bytesRead;
      byteOff++;
     }
-    if (setxattr(argv[argc-1], argv[i], value, byteOff, 0, flags.slink) < 0) {
-     fprintf(stderr, "xattr: %s: %s: ", argv[argc-1], argv[i]); perror(NULL);
+    if (setxattr(argv[argc-1], pair, value, byteOff, 0, flags.slink) == -1) {
+     fprintf(stderr, "xattr: %s: %s: ", argv[argc-1], pair); perror(NULL);
     } else if (flags.v)
-     printf("xattr: attribute `%s' set on %s\n", argv[i], argv[argc-1]);
+     printf("xattr: attribute `%s' set on %s\n", pair, argv[argc-1]);
     free(value);
    } else {
-    if (setxattr(argv[argc-1], argv[i], newVal, strlen(newVal), 0, flags.slink)
-     == -1) {
-     fprintf(stderr, "xattr: %s: %s: ", argv[argc-1], argv[i]); perror(NULL);
+    if (setxattr(argv[argc-1], pair, newVal, strlen(newVal), 0, flags.slink) ==
+     -1) {
+     fprintf(stderr, "xattr: %s: %s: ", argv[argc-1], pair); perror(NULL);
     } else if (flags.v)
-     printf("xattr: attribute `%s' set on %s\n", argv[i], argv[argc-1]);
+     printf("xattr: attribute `%s' set on %s\n", pair, argv[argc-1]);
    }
+   free(pair);
   }
  } else if (flags.mode == rm) {
   if (flags.A) {
@@ -225,7 +232,7 @@ char** getAttrs(char* path) {
   attrs[i] = currAttr;
   char* nextAttr = strchr(currAttr, '\0');
   if (nextAttr == NULL) break;
-  currAttr = nextAttr;
+  currAttr = ++nextAttr;
  }
  attrs[attrQty] = NULL;  /* Just to be sure */
  return attrs;

@@ -1,7 +1,7 @@
 TO DO
-- Implement:
- - printing of attribute size?
- - switch to only list certain attributes?
+- Implement printing of attribute size?
 - Take care of single hex digits in hex attribute values
 - Modify the return value if a non-fatal error occurred during execution?
 - Write a manpage
+- Do something if the user puts an equals sign at the beginning of a name=value
+  pair?
