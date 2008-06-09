@@ -1,13 +1,5 @@
 /* $Id$ */
 
-/* To do:
- - Implement:
-  - printing of attribute size?
-  - switch to only list certain attributes?
- - Take care of single hex digits in hex attribute values
- - Modify the return value if a non-fatal error occurred during execution?
-*/
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
