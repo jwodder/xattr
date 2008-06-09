@@ -209,6 +209,9 @@ attribute values as sequences of hexadecimal digits (which may not contain
 .IX Header "BUGS"
 Odd numbers of hexadecimal digits, whether terminated by a non-hex digit or by
 the end of the argument, are not handled very well when setting attributes.
+.PP
+\&\fBxattr\fR does not complain if the user tries to set an attribute with an empty
+name (though it will complain once the attempt fails).
 .SH "SEE ALSO"
 .IX Header "SEE ALSO"
 \&\fIls\fR\|(1), \fIfnmatch\fR\|(3), \fIgetxattr\fR\|(3), \fIlistxattr\fR\|(3), \fIremovexattr\fR\|(3)

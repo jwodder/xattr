@@ -1,4 +1,10 @@
-/* $Id$ */
+/* xattr.c - Mac OS X extended attributes manipulation utility
+ * Written by John T. Wodder II <jwodder@sdf.lonestar.org>
+ *
+ * To do: Deal with the bugs documented in the manpage.
+ *
+ * $Id$
+ */
 
 #include <stdio.h>
 #include <stdlib.h>
