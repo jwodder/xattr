@@ -103,7 +103,7 @@ int main(int argc, char** argv) {
    int escOffset = 0;
    char* newVal = NULL;
    for (int j=0; pair[j] != '\0'; j++) {
-    if (pair[j] == '\\') {j++; escOffset++; }
+    if (pair[j] == '\\' && pair[j+1] != '\0') {j++; escOffset++; }
     else if (pair[j] == '=') {
      pair[j-escOffset] = '\0';
      newVal = pair + j + 1;
